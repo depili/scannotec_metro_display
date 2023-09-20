@@ -16,11 +16,20 @@
 
 
 ### message types:
+* U - update display?
+  * Doesn't disable RX on message completion
+  * Doesn't trigger message payload processing
 * V - enable display
+  * Triggers message processing
+  * Does not have payload
 * W - clear display
+  * Triggers message processing
+  * Does not have payload
 * 0x05 - set addresses
 * 0x09 - set RTC
-* 0x81 - something?
+* 0x81 - Ping?
+  * Send ACIA flags
+  * Triggers message processing
 * 0x87 - RTC related
 
 any other type will set display contents
@@ -37,3 +46,15 @@ any other type will set display contents
 * 0x15 4 char string substitution
 * 0x16 time of day substitution
 * 0x1b <byte> set active row
+
+
+
+- set_address: return
+- V -> process all
+- time_set: return
+- rtc_something does something: return
+- !W -> return
+
+
+
+- Jumpperit sarjapiirin läheellä valitsevat RX/TX tyypin

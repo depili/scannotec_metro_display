@@ -2,14 +2,23 @@ package main
 
 import (
 	"fmt"
+	"github.com/tarm/serial"
+	"log"
+	"os"
+	"time"
 )
 
 const (
 	headerLen = 6
+	address   = 0x02
 )
 
 func main() {
 	testMessage := []byte{0x82, 0x00, 0x30, 0x01, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34, 0xca}
+
+	vMessage := []byte{0x82, 0x00, address, 'V'}
+	wMessage := []byte{0x82, 0x00, address, 'W'}
+	pingMessage := []byte{0x82, 0x00, address, 0x81}
 
 	m := message{}
 
@@ -18,8 +27,8 @@ func main() {
 	}
 
 	m = message{
-		Addr:    0x11,
-		MsgType: 0x1,
+		Addr:    0x02,
+		MsgType: 'U',
 		Payload: make([]byte, 0),
 	}
 
@@ -28,13 +37,68 @@ func main() {
 		encoded := rowText(byte(i), []byte(str))
 		m.Payload = append(m.Payload, encoded...)
 	}
-	packet := m.encode()
-	fmt.Printf("Encoded message:\n%X\n", packet)
+	dataPacket := m.encode()
+	fmt.Printf("Encoded message:\n%X\n", dataPacket)
 
 	m.resetState()
-	for _, b := range packet {
+	for _, b := range dataPacket {
 		m.parse(b)
 	}
+
+	bauds := []int{4800, 9600, 2400, 19200, 1200, 600}
+	for _, b := range bauds {
+		sendAll(b)
+	}
+}
+
+func sendAll(baud int) {
+	log.Printf("Trying with baudrate: %d", baud)
+	c := &serial.Config{Name: os.Args[1], Baud: baud}
+
+	s, err := serial.OpenPort(c)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	time.Sleep(time.Second)
+
+	/*
+		log.Printf("Sending first ping %x", pingPacket)
+		n, err := s.Write(pingPacket)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Wrote %d bytes...", n)
+
+		time.Sleep(500 * time.Millisecond)
+	*/
+
+	send(s, wMessage)
+
+	log.Printf("Sending data...")
+	send(s, dataPacket)
+
+	time.Sleep(50 * time.Millisecond)
+
+	log.Printf("Sending enable")
+	send(s, vMessage)
+
+	time.Sleep(50 * time.Millisecond)
+
+	send(s, pingMessage)
+
+	s.Flush()
+	s.Close()
+	time.Sleep(2 * time.Second)
+}
+
+func send(s *serial.Port, data []byte) {
+	log.Printf("Sending %x", data)
+	n, err = s.Write(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Wrote %d bytes...", n)
 }
 
 type message struct {
@@ -70,9 +134,6 @@ func (m *message) parse(in byte) bool {
 			fmt.Printf("set time\n")
 		case 0x56: // 'V'
 			m.MsgType = 0x3
-			m.print()
-			m.resetState()
-			return true
 		case 0x57: // 'W'
 			m.MsgType = 0x4
 			m.print()
@@ -100,7 +161,7 @@ func (m *message) parse(in byte) bool {
 		fmt.Printf("got length: %v\n", m.len)
 		m.decodeState = 0x7f
 	case 0x80:
-		if len(m.Payload) == m.len {
+		if len(m.Payload) == m.len-1 {
 			if in == m.checksum {
 				fmt.Printf("checksum ok!\n")
 			} else {
@@ -141,16 +202,16 @@ func (m *message) print() {
 }
 
 func (m *message) encode() []byte {
-	m.len = len(m.Payload)
+	m.len = len(m.Payload) + 1
 
-	ret := make([]byte, headerLen)
+	ret := make([]byte, 4)
 	ret[0] = 0x82
 	ret[1] = 0x0
 	ret[2] = m.Addr
 	ret[3] = m.MsgType
-	ret[4] = byte(m.len >> 8)
-	ret[5] = byte(m.len & 0xff)
-	if m.len != 0 {
+	if m.len != 1 {
+		ret = append(ret, byte(m.len>>8))
+		ret = append(byte(m.len & 0xff))
 		m.checksum = 0
 		for _, b := range m.Payload {
 			m.checksum += b
