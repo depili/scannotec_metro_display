@@ -16,15 +16,14 @@
 
 
 ### message types:
-* U - update display?
-  * Doesn't disable RX on message completion
-  * Doesn't trigger message payload processing
+* U - update display
+  * Loads the payload to a 8000 byte buffer waiting to be processed, can be broken up into multiple messages
 * V - enable display
   * Triggers message processing
-  * Does not have payload
-* W - clear display
+  * No timeout on the display
+* W - enable display with timeout
   * Triggers message processing
-  * Does not have payload
+  * Clears the display once a longish timeout expires
 * 0x05 - set addresses
 * 0x09 - set RTC
 * 0x81 - Ping?
@@ -32,21 +31,32 @@
   * Triggers message processing
 * 0x87 - RTC related
 
-any other type will set display contents
+Other messages will raise a error flag and do nothing else...
 
 ### content control characters
 
-* 0x09 goto offset?
+* 0x09 scroll text
+  * two hex chars following, offset to start the scrolling in hex, - 0x4c, in pixels
 * 0x0e small font
+  * Confirmed
 * 0x0f large font
+  * Confirmed
 * 0x11 set blink
+  * Confirmed
 * 0x12 reset blink
-* 0x13 goto row start
-* 0x14 delay
-* 0x15 4 char string substitution
+  * Confirmed
+* 0x13 Enable dynamic content for the row
+  * Scroller doesn't scroll or timers change unless this is present in the row data
+* 0x14 timed messages
+  * Two hex chars following.
+  * Need to have multiple sections of different texts
+  * Can have different content on each of them
+* 0x15 4 char string substition
+  * No idea what the contents are supposed to be, maybe temperature reading?
 * 0x16 time of day substitution
-* 0x1b <byte> set active row
-
+  * 12:34
+* 0x1b <ascii number> set active row
+  * Rows start from 0x30 ->
 
 
 - set_address: return

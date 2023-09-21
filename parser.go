@@ -16,10 +16,6 @@ const (
 func main() {
 	testMessage := []byte{0x82, 0x00, 0x30, 0x01, 0x00, 0x04, 0x31, 0x32, 0x33, 0x34, 0xca}
 
-	vMessage := []byte{0x82, 0x00, address, 'V'}
-	wMessage := []byte{0x82, 0x00, address, 'W'}
-	pingMessage := []byte{0x82, 0x00, address, 0x81}
-
 	m := message{}
 
 	for _, b := range testMessage {
@@ -32,11 +28,53 @@ func main() {
 		Payload: make([]byte, 0),
 	}
 
-	for i := 0; i < 8; i++ {
-		str := fmt.Sprintf("%d Hacklab ry", i)
-		encoded := rowText(byte(i), []byte(str))
-		m.Payload = append(m.Payload, encoded...)
-	}
+	/*
+		for i := 0; i < 8; i++ {
+			str := fmt.Sprintf("Hacked by Depili")
+			m.addRow(i, str)
+		}
+	*/
+	m.addRow(0, "Kamppi metro station")
+	// m.addRow(1, "timetable display")
+	m.addRow(2, "Donated to Helsinki Hacklab")
+	m.addRow(3, "Hacked by Depili")
+	m.addRow(4, "2023-09-21")
+
+	bytes := []byte("  RTC  ???")
+	bytes[0] = 0x16
+	bytes[6] = 0x15
+	enc := rowText(4, bytes)
+	m.append(enc)
+
+	bytes = []byte(" Large font? ")
+	bytes[0] = 0x0f
+	enc = rowText(5, bytes)
+	m.append(enc)
+
+	bytes = []byte(" Blink  no blink")
+	bytes[0] = 0x11
+	bytes[6] = 0x12
+	enc = rowText(3, bytes)
+	m.append(enc)
+
+	enc = rowText(2, []byte("Dynamic text test:"))
+	enc = append(enc, 0x09, 'b', '4', 0x13)
+	bytes = []byte("Scroller time! We have loads to say here for everyone! Greets to primitive!")
+	enc = append(enc, bytes...)
+	m.append(enc)
+
+	enc = rowText(1, []byte("Timer test: "))
+	enc = append(enc, 0x14, '0', '2')
+	bytes = []byte("After time....")
+	enc = append(enc, bytes...)
+	enc = append(enc, 0x14, '0', '4', 0x13)
+	bytes = []byte("2nd...")
+	enc = append(enc, bytes...)
+	enc = append(enc, 0x14, '0', '8', 0x13)
+	bytes = []byte("SuperSecret!")
+	enc = append(enc, bytes...)
+	m.append(enc)
+
 	dataPacket := m.encode()
 	fmt.Printf("Encoded message:\n%X\n", dataPacket)
 
@@ -45,13 +83,17 @@ func main() {
 		m.parse(b)
 	}
 
-	bauds := []int{4800, 9600, 2400, 19200, 1200, 600}
+	bauds := []int{4800}
 	for _, b := range bauds {
-		sendAll(b)
+		sendAll(b, dataPacket)
 	}
 }
 
-func sendAll(baud int) {
+func sendAll(baud int, dataPacket []byte) {
+	vMessage := []byte{0x82, 0x00, address, 'V'}
+	// wMessage := []byte{0x82, 0x00, address, 'W'}
+	// pingMessage := []byte{0x82, 0x00, address, 0x81}
+
 	log.Printf("Trying with baudrate: %d", baud)
 	c := &serial.Config{Name: os.Args[1], Baud: baud}
 
@@ -62,30 +104,37 @@ func sendAll(baud int) {
 
 	time.Sleep(time.Second)
 
-	/*
-		log.Printf("Sending first ping %x", pingPacket)
-		n, err := s.Write(pingPacket)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Wrote %d bytes...", n)
+	log.Printf("Trying to set time...")
 
-		time.Sleep(500 * time.Millisecond)
-	*/
+	timeMsg := message{
+		Addr:    address,
+		MsgType: 0x09,
+		Payload: make([]byte, 0),
+	}
+	t := time.Now()
+	hour, min, sec := t.Clock()
+	timeMsg.append([]byte{byte(hour), byte(min), byte(sec)})
+	enc := timeMsg.encode()
+	send(s, enc)
 
-	send(s, wMessage)
+	time.Sleep(500 * time.Millisecond)
+
+	// send(s, wMessage)
 
 	log.Printf("Sending data...")
 	send(s, dataPacket)
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(1000 * time.Millisecond)
 
 	log.Printf("Sending enable")
 	send(s, vMessage)
 
-	time.Sleep(50 * time.Millisecond)
-
-	send(s, pingMessage)
+	// send(s, pingMessage)
+	/*
+		log.Printf("Sending first ping %x", pingMessage)
+		send(s, pingMessage)
+		time.Sleep(500 * time.Millisecond)
+	*/
 
 	s.Flush()
 	s.Close()
@@ -94,7 +143,7 @@ func sendAll(baud int) {
 
 func send(s *serial.Port, data []byte) {
 	log.Printf("Sending %x", data)
-	n, err = s.Write(data)
+	n, err := s.Write(data)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,6 +157,15 @@ type message struct {
 	decodeState int
 	checksum    byte
 	len         int
+}
+
+func (m *message) append(data []byte) {
+	m.Payload = append(m.Payload, data...)
+}
+
+func (m *message) addRow(row int, str string) {
+	encoded := rowText(byte(row), []byte(str))
+	m.append(encoded)
 }
 
 func (m *message) parse(in byte) bool {
@@ -133,8 +191,13 @@ func (m *message) parse(in byte) bool {
 		case 0x9:
 			fmt.Printf("set time\n")
 		case 0x56: // 'V'
+			fmt.Printf("V message\n")
 			m.MsgType = 0x3
+			m.print()
+			m.resetState()
+			return true
 		case 0x57: // 'W'
+			fmt.Printf("W message\n")
 			m.MsgType = 0x4
 			m.print()
 			m.resetState()
@@ -167,6 +230,9 @@ func (m *message) parse(in byte) bool {
 			} else {
 				fmt.Printf("checksum error: got %x expected %x\n", m.checksum, in)
 			}
+			if m.MsgType == 0x55 {
+				fmt.Printf("U message\n")
+			}
 			m.print()
 			m.resetState()
 			return true
@@ -183,7 +249,7 @@ func (m *message) parse(in byte) bool {
 func rowText(row byte, text []byte) []byte {
 	ret := make([]byte, 2)
 	ret[0] = 0x1b
-	ret[1] = row & 0x7
+	ret[1] = row&0x7 + 0x30
 	ret = append(ret, text...)
 	return ret
 }
@@ -211,7 +277,7 @@ func (m *message) encode() []byte {
 	ret[3] = m.MsgType
 	if m.len != 1 {
 		ret = append(ret, byte(m.len>>8))
-		ret = append(byte(m.len & 0xff))
+		ret = append(ret, byte(m.len&0xff))
 		m.checksum = 0
 		for _, b := range m.Payload {
 			m.checksum += b
