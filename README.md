@@ -14,24 +14,31 @@
 8. checksum
   * Just a rolling 8bit sum of all bytes from step 5
 
+The message length is the length of the data bytes payload and the checksum.
+
 
 ### message types:
-* U - update display
+* 0x05 - set addresses
+  * Payload is 2 bytes with the alternative addresses to listen to
+* 0x09 - set RTC
+  * Payload is 3 bytes, hours, minutes and seconds to set the time to
+* 0x55 U - update display
   * Loads the payload to a 8000 byte buffer waiting to be processed, can be broken up into multiple messages
-* V - enable display
+* 0x56 V - enable display
   * Triggers message processing
   * No timeout on the display
-* W - enable display with timeout
+  * No payload, message processing ends at the msg type byte
+* 0x57 W - enable display with timeout
   * Triggers message processing
   * Clears the display once a longish timeout expires
-* 0x05 - set addresses
-* 0x09 - set RTC
+  * No payload, message processing ends at the msg type byte
 * 0x81 - Ping?
   * Send ACIA flags
   * Triggers message processing
-* 0x87 - RTC related
+  * No payload, message processing ends at the msg type byte
+* 0x87 - RTC related?
 
-Other messages will raise a error flag and do nothing else...
+Other messages will raise a error flag, but might still write to the 8000 byte buffer, needs to be verified...
 
 ### content control characters
 
