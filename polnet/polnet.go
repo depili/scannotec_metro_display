@@ -12,7 +12,7 @@ const (
 	vType             = 0x56
 	wType             = 0x59
 	pingType          = 0x81
-	analogMeasureType = 0x87
+	temperatureType   = 0x87
 	startMagic        = 0x82
 	scrollCode        = 0x09
 	normalFontCode    = 0x0e
@@ -34,6 +34,15 @@ type Message struct {
 	decodeState int
 	checksum    byte
 	len         int
+}
+
+// TemperaturePacket is the '0x87' packet
+func TemperaturePacket(addr byte) []byte {
+	m := Message{
+		MsgType: temperatureType,
+		Addr:    addr,
+	}
+	return m.Encode()
 }
 
 // PingPacket is the '0x81' packet
